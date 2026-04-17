@@ -1,0 +1,50 @@
+{
+  "name": "i18n-lsp",
+  "displayName": "i18n LSP",
+  "description": "Inline translation previews via inlay hints for i18n keys",
+  "version": "0.1.0",
+  "publisher": "rbdsolutions",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/.i18n-lsp.json",
+    "onLanguage:typescript",
+    "onLanguage:typescriptreact",
+    "onLanguage:javascript",
+    "onLanguage:javascriptreact",
+    "onLanguage:vue",
+    "onLanguage:svelte",
+    "onLanguage:dart"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "i18n LSP",
+      "properties": {
+        "i18n-lsp.serverPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the i18n-lsp binary. Leave empty to use the globally installed version."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.39",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
+  }
+}

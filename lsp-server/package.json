@@ -1,0 +1,29 @@
+{
+  "name": "i18n-lsp",
+  "version": "0.1.0",
+  "description": "Language Server for i18n inline translations via inlay hints",
+  "main": "dist/server.js",
+  "bin": {
+    "i18n-lsp": "dist/server.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "start": "node dist/server.js --stdio",
+    "check": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "chokidar": "^3.6.0",
+    "glob": "^10.3.10",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.11",
+    "vscode-uri": "^3.0.8",
+    "yaml": "^2.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.4"
+  }
+}
