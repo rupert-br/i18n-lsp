@@ -2,20 +2,45 @@
   "name": "i18n-lsp",
   "version": "0.1.0",
   "description": "Language Server for i18n inline translations via inlay hints",
+  "license": "MIT",
+  "author": "Rupert Brandstätter",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rupert-br/i18n-lsp.git",
+    "directory": "lsp-server"
+  },
+  "homepage": "https://github.com/rupert-br/i18n-lsp#readme",
+  "bugs": "https://github.com/rupert-br/i18n-lsp/issues",
+  "keywords": [
+    "lsp",
+    "language-server",
+    "i18n",
+    "translations",
+    "localization",
+    "inlay-hints",
+    "vscode",
+    "zed"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "main": "dist/server.js",
   "bin": {
     "i18n-lsp": "dist/server.js"
   },
   "scripts": {
-    "build": "tsc",
-    "watch": "tsc --watch",
+    "build": "tsc -p tsconfig.build.json",
+    "watch": "tsc -p tsconfig.build.json --watch",
     "start": "node dist/server.js --stdio",
     "check": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "bundle:zed": "esbuild src/server.ts --bundle --platform=node --format=cjs --target=node18 --minify --external:fsevents --main-fields=module,main --outfile=../zed-extension/server/i18n-lsp.js",
+    "prepack": "npm run build && node -e \"const fs=require('fs');for(const f of ['README.md','LICENSE'])fs.copyFileSync('../'+f,f)\""
   },
   "dependencies": {
     "chokidar": "^3.6.0",
     "glob": "^10.3.10",
+    "jsonc-parser": "^3.3.1",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.11",
     "vscode-uri": "^3.0.8",
@@ -23,7 +48,11 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
+    "esbuild": "^0.28.2",
     "typescript": "^5.4.0",
     "vitest": "^4.1.4"
-  }
+  },
+  "files": [
+    "dist/**/*.js"
+  ]
 }

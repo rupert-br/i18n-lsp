@@ -1,40 +1,51 @@
-import { workspace, ExtensionContext, window } from "vscode";
+import { workspace, ExtensionContext } from "vscode";
 import {
   LanguageClient,
   LanguageClientOptions,
   ServerOptions,
+  TransportKind,
 } from "vscode-languageclient/node";
-import { execSync } from "child_process";
 
 let client: LanguageClient | undefined;
 
-function resolveServerPath(): string | null {
-  const config = workspace.getConfiguration("i18n-lsp");
-  const customPath = config.get<string>("serverPath");
-  if (customPath) return customPath;
-
-  // VS Code may not inherit nvm/shell PATH — resolve the full path
-  try {
-    return execSync("which i18n-lsp", { encoding: "utf-8" }).trim();
-  } catch {
-    return null;
+/** The server bundled with the extension, unless `i18n-lsp.serverPath` points elsewhere. */
+function serverOptions(context: ExtensionContext): ServerOptions {
+  const customPath = workspace.getConfiguration("i18n-lsp").get<string>("serverPath");
+  if (customPath) {
+    return { command: customPath, args: ["--stdio"] };
   }
+
+  // Runs on VS Code's own Node runtime, so no Node or global install is needed.
+  const module = context.asAbsolutePath("dist/server.js");
+  return {
+    run: { module, transport: TransportKind.ipc },
+    debug: { module, transport: TransportKind.ipc, options: { execArgv: ["--nolazy", "--inspect=6009"] } },
+  };
+}
+
+const SERVER_SETTINGS = [
+  "translationFiles",
+  "defaultLocale",
+  "defaultNamespace",
+  "functionPatterns",
+  "keyStyle",
+  "maxInlayLength",
+  "reportUnusedKeys",
+];
+
+/** Settings the user set explicitly; anything unset is left to the server to detect. */
+function serverSettings(): Record<string, unknown> {
+  const config = workspace.getConfiguration("i18n-lsp", workspace.workspaceFolders?.[0]);
+  const settings: Record<string, unknown> = {};
+  for (const key of SERVER_SETTINGS) {
+    const info = config.inspect(key);
+    const value = info?.workspaceFolderValue ?? info?.workspaceValue ?? info?.globalValue;
+    if (value !== undefined) settings[key] = value;
+  }
+  return settings;
 }
 
 export function activate(context: ExtensionContext) {
-  const serverPath = resolveServerPath();
-  if (!serverPath) {
-    window.showWarningMessage(
-      "i18n-lsp not found. Install with: npm i -g i18n-lsp"
-    );
-    return;
-  }
-
-  const serverOptions: ServerOptions = {
-    command: serverPath,
-    args: ["--stdio"],
-  };
-
   const clientOptions: LanguageClientOptions = {
     documentSelector: [
       { scheme: "file", language: "typescript" },
@@ -46,12 +57,13 @@ export function activate(context: ExtensionContext) {
       { scheme: "file", language: "dart" },
       { scheme: "file", language: "json" },
     ],
+    initializationOptions: serverSettings(),
   };
 
   client = new LanguageClient(
     "i18n-lsp",
     "i18n LSP",
-    serverOptions,
+    serverOptions(context),
     clientOptions
   );
 

@@ -1,0 +1,39 @@
+name: Release server
+
+# Publishes lsp-server to npm when a tag like `server-v0.2.0` is pushed.
+# Uses npm trusted publishing (OIDC): configure this repository and workflow
+# under the package's Settings → Trusted publisher on npmjs.com. The first
+# release (0.1.0) has to be published by hand so the package exists.
+
+on:
+  push:
+    tags: ["server-v*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lsp-server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+          cache-dependency-path: lsp-server/package-lock.json
+
+      - run: npm ci
+
+      - name: Tag matches package version
+        run: test "server-v$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME}"
+
+      - run: npm test
+
+      - run: npm publish --provenance

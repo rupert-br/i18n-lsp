@@ -1,44 +1,38 @@
-import {
-  CodeAction,
-  CodeActionKind,
-  CodeActionParams,
-  TextEdit,
-  WorkspaceEdit,
-  Range,
-  Position,
-} from "vscode-languageserver";
-import { TranslationStore } from "./translationIndex";
-import { I18nConfig } from "./config";
-import { URI } from "vscode-uri";
-import * as fs from "fs";
-import * as path from "path";
-import * as yaml from "yaml";
+import { CodeAction, CodeActionKind, CodeActionParams } from "vscode-languageserver";
+import { TextDocument } from "vscode-languageserver-textdocument";
+import { buildInsertKeyEdit, buildRemoveKeyEdit } from "./translationEdits";
+import { provideExtractAction } from "./extract";
+import { SOURCE } from "./diagnostics";
+import { Project } from "./project";
+
+const PLACEHOLDER = "TODO";
 
 export function provideCodeActions(
   params: CodeActionParams,
-  store: TranslationStore,
-  config: I18nConfig,
-  workspaceRoot: string
+  doc: TextDocument | undefined,
+  fsPath: string,
+  project: Project
 ): CodeAction[] {
+  const { store } = project;
   const actions: CodeAction[] = [];
 
   for (const diag of params.context.diagnostics) {
-    if (diag.source !== "i18n-lsp") continue;
+    if (diag.source !== SOURCE) continue;
 
     if (diag.code === "missing-key") {
-      const data = diag.data as { key: string } | undefined;
+      const data = diag.data as { key: string; canonicalKey?: string } | undefined;
       if (!data?.key) continue;
-      const key = data.key;
+      const canonical = data.canonicalKey ?? data.key;
 
       const edit = buildInsertKeyEdit(
-        key,
-        store.allLocales(),
-        config,
-        workspaceRoot
+        project,
+        canonical,
+        store.allLocales(store.namespaceOf(canonical)),
+        () => PLACEHOLDER
       );
       if (edit) {
         actions.push({
-          title: `Add "${key}" to all translation files`,
+          title: `Add "${data.key}" to all translation files`,
           kind: CodeActionKind.QuickFix,
           diagnostics: [diag],
           isPreferred: true,
@@ -47,115 +41,46 @@ export function provideCodeActions(
       }
     }
 
-    if (diag.code === "partial-translation") {
+    if (diag.code === "partial-translation" || diag.code === "missing-locales") {
       const data = diag.data as { key: string; missingLocales: string[] } | undefined;
       if (!data?.key || !data?.missingLocales) continue;
-      const key = data.key;
-      const missingLocales = data.missingLocales;
 
-      const edit = buildInsertKeyEdit(
-        key,
-        missingLocales,
-        config,
-        workspaceRoot
-      );
+      const edit = buildInsertKeyEdit(project, data.key, data.missingLocales, () => PLACEHOLDER);
       if (edit) {
         actions.push({
-          title: `Add "${key}" to ${missingLocales.join(", ")}`,
+          title: `Add "${data.key}" to ${data.missingLocales.join(", ")}`,
           kind: CodeActionKind.QuickFix,
           diagnostics: [diag],
           isPreferred: true,
           edit,
         });
       }
+    }
+
+    if (diag.code === "unused-key") {
+      const data = diag.data as { key: string } | undefined;
+      if (!data?.key) continue;
+
+      const edit = buildRemoveKeyEdit(project, data.key);
+      if (edit) {
+        actions.push({
+          title: `Remove unused key "${data.key}" from all translation files`,
+          kind: CodeActionKind.QuickFix,
+          diagnostics: [diag],
+          edit,
+        });
+      }
+    }
+  }
+
+  if (doc && !store.isTranslationFile(fsPath)) {
+    const wantsRefactor =
+      !params.context.only || params.context.only.some((k) => CodeActionKind.RefactorExtract.startsWith(k));
+    if (wantsRefactor) {
+      const extract = provideExtractAction(params, doc, fsPath, project);
+      if (extract) actions.push(extract);
     }
   }
 
   return actions;
-}
-
-function buildInsertKeyEdit(
-  key: string,
-  locales: string[],
-  config: I18nConfig,
-  workspaceRoot: string
-): WorkspaceEdit | null {
-  const changes: { [uri: string]: TextEdit[] } = {};
-
-  for (const locale of locales) {
-    const relativePath = config.translationFiles.replace("{locale}", locale);
-    const filePath = path.join(workspaceRoot, relativePath);
-
-    if (!fs.existsSync(filePath)) continue;
-
-    const content = fs.readFileSync(filePath, "utf-8");
-    const ext = path.extname(filePath).toLowerCase();
-
-    let data: Record<string, unknown>;
-    try {
-      if (ext === ".json" || ext === ".arb") {
-        data = JSON.parse(content);
-      } else if (ext === ".yml" || ext === ".yaml") {
-        data = yaml.parse(content);
-      } else {
-        continue;
-      }
-    } catch {
-      continue;
-    }
-
-    // Insert the key with a TODO placeholder
-    if (config.keyStyle === "nested") {
-      setNestedValue(data, key, "TODO");
-    } else {
-      data[key] = "TODO";
-    }
-
-    // Serialize back, preserving format
-    let newContent: string;
-    if (ext === ".json" || ext === ".arb") {
-      newContent = JSON.stringify(data, null, 2) + "\n";
-    } else {
-      newContent = yaml.stringify(data);
-    }
-
-    // Build a full-file replacement edit
-    const lines = content.split("\n");
-    const lastLine = lines.length - 1;
-    const lastLineLen = lines[lastLine].length;
-
-    const uri = URI.file(filePath).toString();
-    changes[uri] = [
-      TextEdit.replace(
-        Range.create(
-          Position.create(0, 0),
-          Position.create(lastLine, lastLineLen)
-        ),
-        newContent
-      ),
-    ];
-  }
-
-  if (Object.keys(changes).length === 0) return null;
-  return { changes };
-}
-
-function setNestedValue(
-  obj: Record<string, unknown>,
-  key: string,
-  value: string
-): void {
-  const parts = key.split(".");
-  let current = obj;
-  for (let i = 0; i < parts.length - 1; i++) {
-    if (
-      !(parts[i] in current) ||
-      typeof current[parts[i]] !== "object" ||
-      current[parts[i]] === null
-    ) {
-      current[parts[i]] = {};
-    }
-    current = current[parts[i]] as Record<string, unknown>;
-  }
-  current[parts[parts.length - 1]] = value;
 }

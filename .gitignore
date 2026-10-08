@@ -3,3 +3,7 @@ dist/
 target/
 *.wasm
 .DS_Store
+
+# Copied from the repo root by `npm pack`/`npm publish` (see lsp-server prepack)
+/lsp-server/README.md
+/lsp-server/LICENSE

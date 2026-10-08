@@ -6,81 +6,74 @@ import {
 } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { TranslationStore } from "./translationIndex";
-import {
-  findTranslationCallsInLine,
-  expandDynamicKey,
-} from "./patterns";
 import { I18nConfig } from "./config";
-import { sortedLocales, getCachedPatternRegex } from "./utils";
+import { sortedLocales } from "./utils";
+import { analyzeDocument, resolveCall, preferredKey } from "./analysis";
+import { Project } from "./project";
 
 /**
  * Provides LSP inlay hints that show translated values inline.
  *
- * Example rendering in Zed:
+ * Example rendering:
  *
- *   const msg = t('welcome.back')  → "Willkommen zurück"
- *   const title = t('app.title')   → "Meine App"
+ *   const msg = t('welcome.back')  → en: "Welcome back" | de: "Willkommen zurück"
  *
- * The hints appear after the closing parenthesis of each translation call,
- * using InlayHintKind.Type for consistent dimmed styling.
+ * The hints appear after the closing quote (and parenthesis) of each
+ * translation call, using InlayHintKind.Type for consistent dimmed styling.
  */
 export function provideInlayHints(
   params: InlayHintParams,
   document: TextDocument,
-  store: TranslationStore,
-  config: I18nConfig
+  project: Project
 ): InlayHint[] {
+  const { store, config } = project;
   const hints: InlayHint[] = [];
-  const text = document.getText();
-  const lines = text.split("\n");
-  const regex = getCachedPatternRegex(config);
+  const analysis = analyzeDocument(document, config);
 
-  // Only process lines within the requested range
   const startLine = params.range.start.line;
-  const endLine = Math.min(params.range.end.line, lines.length - 1);
+  const endLine = params.range.end.line;
 
-  for (let i = startLine; i <= endLine; i++) {
-    const line = lines[i];
-    const calls = findTranslationCallsInLine(line, i, regex);
+  for (const call of analysis.calls) {
+    if (call.line < startLine || call.line > endLine) continue;
 
-    for (const call of calls) {
-      let value: string | undefined;
-      let matches: string[] | undefined;
-      if (call.dynamic) {
-        matches = expandDynamicKey(call.key, store.allKeys());
-        if (matches.length === 0) continue;
-        value = formatDynamicValues(matches, store, config.maxInlayLength);
-      } else {
-        value = formatAllLocales(call.key, store, config);
-        if (!value) continue;
-      }
+    const resolved = resolveCall(call, analysis.namespaces, store);
+    if (resolved.length === 0) continue;
 
-      // Truncate long values
-      const displayValue =
-        value.length > config.maxInlayLength
-          ? value.substring(0, config.maxInlayLength - 1) + "…"
-          : value;
-
-      // Find the closing quote + paren after the key to place the hint
-      const afterKey = line.substring(call.keyEnd);
-      const closeMatch = afterKey.match(/['"]\s*\)?/);
-      const hintCol = closeMatch
-        ? call.keyEnd + closeMatch.index! + closeMatch[0].length
-        : call.keyEnd + 1;
-
-      const hint: InlayHint = {
-        position: Position.create(i, hintCol),
-        label: `→ ${displayValue}`,
-        kind: InlayHintKind.Type,
-        paddingLeft: true,
-        paddingRight: false,
-        tooltip: call.dynamic && matches
-          ? buildTooltip(call.key, store, config, matches)
-          : buildTooltip(call.key, store, config),
-      };
-
-      hints.push(hint);
+    let value: string | undefined;
+    let key: string | undefined;
+    if (call.dynamic) {
+      value = formatDynamicValues(resolved, store, config.maxInlayLength);
+    } else {
+      key = preferredKey(resolved);
+      value = key ? formatAllLocales(key, store, config) : undefined;
     }
+    if (!value) continue;
+
+    // Truncate long values
+    const displayValue =
+      value.length > config.maxInlayLength
+        ? value.substring(0, config.maxInlayLength - 1) + "…"
+        : value;
+
+    // Place the hint after the closing quote and, if present, the paren.
+    const line = document.getText({
+      start: Position.create(call.line, 0),
+      end: Position.create(call.line + 1, 0),
+    });
+    const afterKey = line.substring(call.keyEnd);
+    const closeMatch = afterKey.match(/^['"`][ \t]*\)?/);
+    const hintCol = call.keyEnd + (closeMatch ? closeMatch[0].length : 1);
+
+    hints.push({
+      position: Position.create(call.line, hintCol),
+      label: `→ ${displayValue}`,
+      kind: InlayHintKind.Type,
+      paddingLeft: true,
+      paddingRight: false,
+      tooltip: call.dynamic
+        ? buildTooltip(call.key, store, config, resolved)
+        : buildTooltip(key!, store, config),
+    });
   }
 
   return hints;

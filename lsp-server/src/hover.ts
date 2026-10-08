@@ -1,9 +1,8 @@
 import { Hover, HoverParams, MarkupKind } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
-import { TranslationStore } from "./translationIndex";
-import { findTranslationCallAtPosition, expandDynamicKey } from "./patterns";
-import { I18nConfig } from "./config";
+import { analyzeDocument, callAtPosition, resolveCall, preferredKey } from "./analysis";
 import { formatLocaleTable } from "./utils";
+import { Project } from "./project";
 
 /**
  * Shows all locale translations on hover over a key.
@@ -18,22 +17,17 @@ import { formatLocaleTable } from "./utils";
 export function provideHover(
   params: HoverParams,
   document: TextDocument,
-  store: TranslationStore,
-  config: I18nConfig
+  project: Project
 ): Hover | null {
-  const text = document.getText();
-  const call = findTranslationCallAtPosition(
-    text,
-    params.position.line,
-    params.position.character,
-    config
-  );
-
+  const { store, config } = project;
+  const analysis = analyzeDocument(document, config);
+  const call = callAtPosition(analysis, params.position.line, params.position.character);
   if (!call) return null;
 
+  const resolved = resolveCall(call, analysis.namespaces, store);
+
   if (call.dynamic) {
-    const matches = expandDynamicKey(call.key, store.allKeys());
-    if (matches.length === 0) {
+    if (resolved.length === 0) {
       return {
         contents: {
           kind: MarkupKind.Markdown,
@@ -42,12 +36,12 @@ export function provideHover(
       };
     }
     const lines = [
-      `### 🌐 \`${call.key}\` — ${matches.length} matches`,
+      `### 🌐 \`${call.key}\` — ${resolved.length} matches`,
       "",
       `| Key | ${config.defaultLocale} |`,
       "|-----|------|",
     ];
-    for (const key of matches) {
+    for (const key of resolved) {
       const value = store.get(key) ?? "—";
       lines.push(`| \`${key}\` | ${value} |`);
     }
@@ -56,8 +50,9 @@ export function provideHover(
     };
   }
 
-  const translations = store.getAll(call.key);
-  if (!translations) {
+  const key = preferredKey(resolved);
+  const translations = key ? store.getAll(key) : undefined;
+  if (!key || !translations) {
     return {
       contents: {
         kind: MarkupKind.Markdown,
@@ -69,7 +64,7 @@ export function provideHover(
   return {
     contents: {
       kind: MarkupKind.Markdown,
-      value: formatLocaleTable(call.key, translations, config.defaultLocale),
+      value: formatLocaleTable(key, translations, config.defaultLocale),
     },
   };
 }

@@ -1,5 +1,5 @@
 [package]
-name = "i18n-lsp-zed"
+name = "i18n-lsp"
 version = "0.1.0"
 edition = "2021"
 

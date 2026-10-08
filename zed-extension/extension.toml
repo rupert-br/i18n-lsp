@@ -2,9 +2,9 @@ id = "i18n-lsp"
 name = "i18n LSP"
 version = "0.1.0"
 schema_version = 1
-authors = ["RBD Solutions"]
+authors = ["Rupert Brandstätter"]
 description = "Inline translation previews via inlay hints for i18n keys"
-repository = "https://github.com/rbdsolutions/i18n-lsp-zed"
+repository = "https://github.com/rupert-br/i18n-lsp"
 
 [language_servers.i18n-lsp]
 name = "i18n Language Server"

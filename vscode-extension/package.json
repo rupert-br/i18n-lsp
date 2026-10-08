@@ -3,7 +3,7 @@
   "displayName": "i18n LSP",
   "description": "Inline translation previews via inlay hints for i18n keys",
   "version": "0.1.0",
-  "publisher": "rbdsolutions",
+  "publisher": "rupert-br",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -29,15 +29,65 @@
         "i18n-lsp.serverPath": {
           "type": "string",
           "default": "",
-          "description": "Path to the i18n-lsp binary. Leave empty to use the globally installed version."
+          "description": "Path to an i18n-lsp binary to use instead of the server bundled with the extension."
+        },
+        "i18n-lsp.translationFiles": {
+          "type": [
+            "string",
+            "array"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "scope": "resource",
+          "markdownDescription": "Pattern(s) for translation files, e.g. `src/locales/{locale}.json`. Leave unset to detect them automatically. A `.i18n-lsp.json` in the project overrides these settings."
+        },
+        "i18n-lsp.defaultLocale": {
+          "type": "string",
+          "scope": "resource",
+          "description": "Primary locale shown first in hints. Detected when unset."
+        },
+        "i18n-lsp.defaultNamespace": {
+          "type": "string",
+          "scope": "resource",
+          "markdownDescription": "Namespace for unprefixed keys when `{namespace}` is used. Detected when unset."
+        },
+        "i18n-lsp.functionPatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "scope": "resource",
+          "markdownDescription": "Function call patterns to detect, e.g. `[\"t(\", \"$t(\"]`."
+        },
+        "i18n-lsp.keyStyle": {
+          "type": "string",
+          "enum": [
+            "nested",
+            "flat"
+          ],
+          "scope": "resource",
+          "description": "How new keys are written. Detected when unset."
+        },
+        "i18n-lsp.maxInlayLength": {
+          "type": "number",
+          "scope": "resource",
+          "description": "Max characters of an inlay hint before truncation."
+        },
+        "i18n-lsp.reportUnusedKeys": {
+          "type": "boolean",
+          "scope": "resource",
+          "description": "Fade out translation keys no source file uses."
         }
       }
     }
   },
   "scripts": {
-    "build": "tsc",
-    "watch": "tsc --watch",
-    "package": "vsce package"
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "check": "tsc --noEmit",
+    "vscode:prepublish": "npm run check && node esbuild.mjs --production",
+    "package": "vsce package --no-dependencies"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
@@ -45,6 +95,7 @@
   "devDependencies": {
     "@types/node": "^20.19.39",
     "@types/vscode": "^1.85.0",
+    "esbuild": "^0.28.2",
     "typescript": "^5.4.0"
   }
 }
